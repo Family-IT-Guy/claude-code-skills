@@ -1,0 +1,5 @@
+# API keys - never commit actual keys
+**/api-key.env
+
+# macOS
+.DS_Store
