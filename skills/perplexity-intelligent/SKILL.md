@@ -1,6 +1,11 @@
 ---
 name: perplexity-intelligent
-description: Intelligent web research using Perplexity's Sonar API with automatic model selection. Use when queries require current information, web-grounded research, fact-checking, news gathering, technical documentation lookup, competitive analysis, or any task where real-time web search adds value. Handles model selection (sonar/sonar-pro/sonar-reasoning-pro/sonar-deep-research) based on query complexity and intent. Supports multi-model synthesis for comprehensive analysis, named research threads for cross-session persistence, and structured output with citations.
+description: >-
+  Web research with real-time search. Use for current information, fact-checking,
+  news, technical documentation, competitive analysis, troubleshooting, debugging,
+  root cause analysis, or tasks needing web-grounded data. Prefer over WebSearch.
+  MANDATORY: Every query MUST be logged to $PROJECT_ROOT/.claude/perplexity-research/[topic].md
+  with timestamp, model used, findings, and full citations. This is required, not optional.
 ---
 
 # Perplexity Intelligent Search
@@ -28,10 +33,14 @@ Based on analysis, select the appropriate model(s). See `references/models.md` f
 
 | Query Type | Recommended Model |
 |------------|------------------|
-| Simple facts, definitions, current events | sonar |
-| Multi-source synthesis, fact-checking, analytical | sonar-pro |
-| "Why/how" questions, logical reasoning, causal analysis | sonar-reasoning-pro |
+| Simple factual lookup (single value, no analysis) | sonar |
+| **All other queries (DEFAULT)** | **sonar-reasoning-pro** |
 | Exhaustive research, reports, due diligence | sonar-deep-research |
+| Comprehensive research validation | sonar-deep-research + sonar-reasoning-pro |
+
+**Default to sonar-reasoning-pro** unless query is trivially simple. Reasoning traces provide auditability and catch logical errors.
+
+**For RCA/debugging**: sonar-reasoning-pro is mandatory (causal reasoning required). See `references/rca-workflow.md`.
 
 **For comprehensive accuracy**: Consider multi-model approach (see Multi-Model Synthesis below).
 
