@@ -4,8 +4,10 @@ description: >-
   Web research with real-time search. Use for current information, fact-checking,
   news, technical documentation, competitive analysis, troubleshooting, debugging,
   root cause analysis, or tasks needing web-grounded data. Prefer over WebSearch.
-  MANDATORY: Every query MUST be logged to $PROJECT_ROOT/.claude/perplexity-research/[topic].md
-  with timestamp, model used, findings, and full citations. This is required, not optional.
+  MANDATORY: (1) Check $PROJECT_ROOT/.claude/perplexity-research/ for existing research
+  before querying - build on prior findings, avoid duplicate work. (2) Log every query
+  to $PROJECT_ROOT/.claude/perplexity-research/[topic].md with timestamp, model used,
+  findings, and full citations. Both are required, not optional.
 ---
 
 # Perplexity Intelligent Search
