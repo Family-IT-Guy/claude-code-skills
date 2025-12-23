@@ -5,9 +5,10 @@ description: >-
   news, technical documentation, competitive analysis, troubleshooting, debugging,
   root cause analysis, or tasks needing web-grounded data. Prefer over WebSearch.
   MANDATORY: (1) Check $PROJECT_ROOT/.claude/perplexity-research/ for existing research
-  before querying - build on prior findings, avoid duplicate work. (2) Log every query
-  to $PROJECT_ROOT/.claude/perplexity-research/[topic].md with timestamp, model used,
-  findings, and full citations. Both are required, not optional.
+  before querying - build on prior findings, avoid duplicate work. (2) Present research
+  plan and await explicit user approval before executing any query. (3) Log every query
+  to $PROJECT_ROOT/.claude/perplexity-research/[topic].md with approved plan, timestamp,
+  model used, findings, and full citations. All three are required, not optional.
 ---
 
 # Perplexity Intelligent Search
@@ -46,6 +47,50 @@ Based on analysis, select the appropriate model(s). See `references/models.md` f
 
 **For comprehensive accuracy**: Consider multi-model approach (see Multi-Model Synthesis below).
 
+### 3.5 Present Research Plan & Await Validation
+
+**MANDATORY**: Before executing any API call, present the research plan and await explicit user approval.
+
+**Full Checkpoint Template** (use for initial queries):
+
+```
+## Research Plan
+
+**Objective**: [Restate the specific question being answered in precise terms]
+**Scope**: [What's in] | [What's explicitly out]
+**Methodology**: [Model selected] because [rationale] | Sources: [prioritization]
+**Expected Output**: [Brief answer / Detailed report / Comparative analysis / etc.]
+
+### Alternatives to Consider
+- [Alternative framing 1] — might be better if [condition]
+- [Alternative framing 2] — worth considering because [reason]
+
+### Questions Before Proceeding
+- [Clarifying question if ambiguity exists]
+- [Assumption being made that user might want to challenge]
+- [Scope decision that could go either way]
+
+### Potential Blind Spots
+- [What this approach might miss]
+- [Bias in source prioritization]
+- [Frame limitation]
+
+Awaiting your input before proceeding.
+```
+
+**Do not execute the API call until user approves or provides direction.**
+
+**Brief Checkpoint Template** (use for follow-up queries within established scope):
+
+A follow-up "serves the original objective" if it directly advances the approved research plan. If it reframes the question or explores a tangent, use the full checkpoint.
+
+```
+Follow-up within established scope:
+"[Sub-question being investigated]" using same methodology.
+
+Proceed?
+```
+
 ### 4. Execute API Call
 
 **API Key Location**: `~/.claude/skills/perplexity-intelligent/config/api-key.env`
@@ -81,12 +126,17 @@ Extract and present:
 - All citations with URLs
 - Model used and rationale
 - Token usage and cost (from `usage` field)
+- Related questions (if `return_related_questions: true` was used)
 
 Always include citations. Never omit sources.
+
+**Tip**: Use `return_related_questions: true` when exploring a new topic to discover adjacent questions worth investigating.
 
 ### 6. Write to Thread (Required)
 
 After presenting results, write to `$PROJECT_ROOT/.claude/perplexity-research/[topic].md`. Create directory if needed. Every query gets logged.
+
+**Include the approved research plan** at the top of each entry. This creates an audit trail of intent vs outcome — what was planned, what was found.
 
 ## Multi-Model Synthesis
 

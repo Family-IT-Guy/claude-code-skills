@@ -70,8 +70,10 @@ Environment variable: `PERPLEXITY_API_KEY`
 |-----------|------|-------------|
 | return_citations | boolean | Include citations in response (default: true) |
 | return_images | boolean | Include images in results |
-| return_related_questions | boolean | Suggest follow-up questions |
+| return_related_questions | boolean | Suggest follow-up questions. Useful for exploration and discovery. |
 | stream | boolean | Stream response tokens |
+
+**Recommended**: Set `return_related_questions: true` when exploring a new topic to discover adjacent questions worth investigating.
 
 ### Structured Output
 
