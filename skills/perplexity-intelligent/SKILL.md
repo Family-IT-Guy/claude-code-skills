@@ -6,14 +6,33 @@ description: >-
   root cause analysis, or tasks needing web-grounded data. Prefer over WebSearch.
   MANDATORY: (1) Check $PROJECT_ROOT/.claude/perplexity-research/ for existing research
   before querying - build on prior findings, avoid duplicate work. (2) Present research
-  plan and await explicit user approval before executing any query. (3) Log every query
-  to $PROJECT_ROOT/.claude/perplexity-research/[topic].md with approved plan, timestamp,
-  model used, findings, and full citations. All three are required, not optional.
+  plan and await explicit user approval before executing any query. (3) Save every API
+  response to raw/ subdirectory BEFORE processing (truncation protection). (4) Log
+  synthesized findings to $PROJECT_ROOT/.claude/perplexity-research/[topic].md with
+  approved plan, timestamp, model used, findings, citations, and links to raw files.
 ---
 
 # Perplexity Intelligent Search
 
 Leverage Perplexity's full Sonar API capability with intelligent model selection, multi-model synthesis, and persistent research threads.
+
+## Directory Structure
+
+```
+$PROJECT_ROOT/.claude/perplexity-research/
+├── raw/                          # Complete API responses (machine-readable, never truncated)
+│   ├── 20251226_143022_topicname.json
+│   ├── 20251226_144515_topicname.json
+│   └── 20251226_151033_othertopic.json
+├── topic-name.md                 # Human-readable thread (references raw files)
+└── other-topic.md
+```
+
+**Why two file types:**
+- `raw/*.json` — Insurance policy. Complete API response, enables re-processing, survives truncation
+- `[topic].md` — Curated synthesis. Human-readable, cross-session continuity, audit trail
+
+A single thread file may reference multiple raw files (multi-query research efforts).
 
 ## Core Workflow
 
@@ -91,11 +110,25 @@ Follow-up within established scope:
 Proceed?
 ```
 
-### 4. Execute API Call
+### 4. Execute API Call (File-First Architecture)
+
+**CRITICAL**: Always save response to file BEFORE processing. This prevents data loss from Bash output truncation (30k char limit). Deep research responses routinely exceed this.
 
 **API Key Location**: `~/.claude/skills/perplexity-intelligent/config/api-key.env`
 
-Read the key file to get the API key value, then execute the curl call:
+**Step 4a: Prepare directories and filename**
+
+```bash
+RESEARCH_DIR="$PROJECT_ROOT/.claude/perplexity-research"
+mkdir -p "$RESEARCH_DIR/raw"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+TOPIC_SLUG="topicname"  # lowercase, hyphens, no spaces
+OUTPUT_FILE="$RESEARCH_DIR/raw/${TIMESTAMP}_${TOPIC_SLUG}.json"
+```
+
+**Step 4b: Execute and save atomically**
+
+Read the key from `~/.claude/skills/perplexity-intelligent/config/api-key.env`, then:
 
 ```bash
 curl -s https://api.perplexity.ai/chat/completions \
@@ -107,36 +140,122 @@ curl -s https://api.perplexity.ai/chat/completions \
       {"role": "system", "content": "SYSTEM_PROMPT"},
       {"role": "user", "content": "USER_QUERY"}
     ]
-  }'
+  }' | jq '.' > "$OUTPUT_FILE"
+
+echo "Saved: $OUTPUT_FILE"
+echo "Size: $(wc -c < "$OUTPUT_FILE") bytes | Lines: $(wc -l < "$OUTPUT_FILE")"
 ```
 
-**Note**: Read the key from `~/.claude/skills/perplexity-intelligent/config/api-key.env` and substitute it directly into the Authorization header.
+**Why `jq '.'`**: Pretty-prints JSON to multiple short lines. The Read tool truncates lines >2000 chars — minified JSON would be truncated. Pretty-printed JSON is safe.
 
 **Claude Code Bash Compatibility**:
-- `source file.env` does NOT work - runs in non-interactive subshell, variables not exported
-- Command substitution `$(...)` gets escaped incorrectly by the bash tool
-- **Solution**: Use the Read tool to get the key value, then embed directly in curl command
+- `source file.env` does NOT work - runs in non-interactive subshell
+- Command substitution `$(...)` gets escaped incorrectly
+- **Solution**: Use Read tool for key, embed directly in curl command
 
 See `references/api-reference.md` for all parameters (search modes, domain filters, recency, etc.).
 
+### 4.5. Retrieve Response from File
+
+Use the Read tool to retrieve the saved response:
+
+```
+Read: $OUTPUT_FILE
+```
+
+**For large responses** (>100KB or >2000 lines): Use offset/limit parameters to read in chunks:
+```
+Read: $OUTPUT_FILE, offset=0, limit=500
+Read: $OUTPUT_FILE, offset=500, limit=500
+...
+```
+
+**If jq failed** (malformed response): Read the raw curl output, diagnose the API error.
+
 ### 5. Process Response
 
-Extract and present:
-- Main response content
-- All citations with URLs
+From the file contents retrieved in Step 4.5, extract and present:
+
+- Main response content (`.choices[0].message.content`)
+- All citations with URLs (`.citations[]`)
 - Model used and rationale
-- Token usage and cost (from `usage` field)
+- Token usage and cost (`.usage` field)
 - Related questions (if `return_related_questions: true` was used)
 
 Always include citations. Never omit sources.
 
 **Tip**: Use `return_related_questions: true` when exploring a new topic to discover adjacent questions worth investigating.
 
+**Raw file reference**: Note the saved file path — you'll reference it in the thread file.
+
 ### 6. Write to Thread (Required)
 
-After presenting results, write to `$PROJECT_ROOT/.claude/perplexity-research/[topic].md`. Create directory if needed. Every query gets logged.
+After presenting results, update `$PROJECT_ROOT/.claude/perplexity-research/[topic].md`. Create file if new topic; append if continuing research.
 
-**Include the approved research plan** at the top of each entry. This creates an audit trail of intent vs outcome — what was planned, what was found.
+**Thread File Format** (supports multiple queries per thread):
+
+```markdown
+# [Topic Name]
+
+Research thread for [brief description of research objective].
+
+---
+
+## Query 1: [Brief query description]
+**Timestamp**: 2025-12-26T14:30:22Z (America/Phoenix 07:30:22)
+**Raw**: [raw/20251226_143022_topicname.json](raw/20251226_143022_topicname.json)
+**Model**: sonar-reasoning-pro | **Tokens**: 2,847
+
+### Approved Plan
+[Copy of the research plan that was approved before execution]
+
+### Findings
+[Synthesized findings - key points, not full dump]
+
+### Citations
+[1] Title - domain.com
+    https://full-url...
+[2] Title - domain.com
+    https://full-url...
+
+---
+
+## Query 2: [Follow-up query description]
+**Timestamp**: 2025-12-26T15:45:10Z (America/Phoenix 08:45:10)
+**Raw**: [raw/20251226_154510_topicname.json](raw/20251226_154510_topicname.json)
+**Model**: sonar-deep-research | **Tokens**: 11,428
+
+### Approved Plan
+[...]
+
+### Findings
+[...]
+
+### Citations
+[...]
+
+---
+
+## Synthesis (Updated: 2025-12-26)
+
+[Running synthesis across all queries in this thread. Update after each new query.]
+
+### Key Conclusions
+- [Conclusion 1]
+- [Conclusion 2]
+
+### Open Questions
+- [What remains unresolved]
+
+### Confidence Assessment
+- High confidence: [topics]
+- Moderate confidence: [topics]
+- Needs verification: [topics]
+```
+
+**Thread file purpose**: Human-readable audit trail with curated synthesis. Links to raw files for complete data.
+
+**Raw file purpose**: Complete API response. Insurance against truncation. Enables re-processing.
 
 ## Multi-Model Synthesis
 
@@ -162,10 +281,10 @@ See `references/multi-model.md` for detailed synthesis patterns.
 
 **Timestamp**: Run `date` to get accurate time. Include both UTC and local with timezone:
 ```
-2025-12-19T15:30:45Z (America/Phoenix 08:30:45)
+2025-12-26T15:30:45Z (America/Phoenix 08:30:45)
 ```
 
-**Format**: Capture complete response including all findings, tables, and full citation URLs.
+**Multi-query threads**: A research effort often requires multiple queries. Each query gets its own section in the thread file, with a running synthesis section at the bottom that gets updated after each query.
 
 **For technical debugging**: Preserve the investigation path - hypotheses generated, each validated/invalidated, what was ruled out and why. Future sessions benefit from seeing the reasoning chain, not just conclusions.
 
