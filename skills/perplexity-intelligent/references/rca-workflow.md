@@ -5,6 +5,7 @@
 Use this workflow for: debugging, troubleshooting, "why is X happening", "what's causing", root cause analysis, failure investigation.
 
 **Model**: sonar-reasoning-pro (mandatory - causal reasoning required)
+**Default params**: `search_context_size: "high"` | `search_mode`: auto-detect (use `"academic"` for scientific/engineering root causes)
 
 ## Context Gathering (Before Hypotheses)
 
@@ -44,6 +45,8 @@ If closure was weak, re-open as ACTIVE.
 
 2. **Generate hypotheses**
    - Query: "What commonly causes [symptom]?"
+   - Use `search_mode: "academic"` for scientific, medical, or engineering root causes (peer-reviewed sources)
+   - Use `search_mode: "web"` for software bugs, configuration issues, infrastructure problems
    - Generate >=3 distinct hypotheses before testing any
    - Check session context for CLOSED hypotheses (don't regenerate)
 
@@ -121,7 +124,7 @@ When session context exists, add:
 ## Root Cause: [conclusion]
 ## Confidence: [high/medium/low + why]
 ## Evidence Chain: [how conclusion follows from evidence]
-## Citations: [all sources with credibility/recency notes]
+## Sources: [all sources with credibility/recency notes]
 ```
 
 ## Source Quality Assessment

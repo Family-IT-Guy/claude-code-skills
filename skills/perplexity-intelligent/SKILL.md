@@ -14,7 +14,16 @@ description: >-
 
 # Perplexity Intelligent Search
 
-Leverage Perplexity's full Sonar API capability with intelligent model selection, multi-model synthesis, and persistent research threads.
+Two-model architecture: sonar-reasoning-pro (default) and sonar-deep-research (exhaustive). File-first responses, persistent research threads, auto-selected search parameters.
+
+## Pricing
+
+| Model | Input/1M | Output/1M | Request Fee (per 1K) |
+|-------|----------|-----------|---------------------|
+| sonar-reasoning-pro | $2 | $8 | $6 / $10 / $14 (low/med/high search context) |
+| sonar-deep-research | $2 | $8 + extras | reasoning $3/1M, citations $2/1M, searches $5/1K |
+
+**IMPORTANT: search_context_size nesting:** This parameter must be inside `web_search_options`, NOT at the top level. Top-level placement is silently ignored (falls back to "low" at $6/1K). Correct format: `"web_search_options": {"search_context_size": "high"}`. Other search params (`search_mode`, `return_images`, date/domain filters) work at the top level. Verified Feb 2026.
 
 ## Directory Structure
 
@@ -22,7 +31,6 @@ Leverage Perplexity's full Sonar API capability with intelligent model selection
 $PROJECT_ROOT/.claude/perplexity-research/
 ├── raw/                          # Complete API responses (machine-readable, never truncated)
 │   ├── 20251226_143022_topicname.json
-│   ├── 20251226_144515_topicname.json
 │   └── 20251226_151033_othertopic.json
 ├── topic-name.md                 # Human-readable thread (references raw files)
 └── other-topic.md
@@ -49,22 +57,27 @@ Before making any API call, assess:
 - **Depth needed**: Quick answer vs exhaustive investigation
 - **Output expectations**: Brief response vs detailed report
 
-### 3. Select Model
+### 3. Select Model & Parameters
 
-Based on analysis, select the appropriate model(s). See `references/models.md` for detailed capabilities.
+**Model selection — binary decision:**
 
-| Query Type | Recommended Model |
-|------------|------------------|
-| Simple factual lookup (single value, no analysis) | sonar |
-| **All other queries (DEFAULT)** | **sonar-reasoning-pro** |
-| Exhaustive research, reports, due diligence | sonar-deep-research |
-| Comprehensive research validation | sonar-deep-research + sonar-reasoning-pro |
-
-**Default to sonar-reasoning-pro** unless query is trivially simple. Reasoning traces provide auditability and catch logical errors.
+| Question | Model |
+|----------|-------|
+| Is this exhaustive, report-style research? | `sonar-deep-research` |
+| Everything else | `sonar-reasoning-pro` |
 
 **For RCA/debugging**: sonar-reasoning-pro is mandatory (causal reasoning required). See `references/rca-workflow.md`.
 
-**For comprehensive accuracy**: Consider multi-model approach (see Multi-Model Synthesis below).
+**Auto-select search_mode** based on query content:
+- Studies, papers, peer-reviewed, scientific claims → `"academic"`
+- Companies, filings, earnings, SEC, financial → `"sec"`
+- Everything else → `"web"` (default)
+
+**Auto-select return_images** based on query content:
+- Product research, visual topics, places, design → `true`
+- Technical, analytical, factual → `false`
+
+**For comprehensive accuracy**: Consider multi-model approach (see `references/multi-model.md`).
 
 ### 3.5 Present Research Plan & Await Validation
 
@@ -77,8 +90,15 @@ Based on analysis, select the appropriate model(s). See `references/models.md` f
 
 **Objective**: [Restate the specific question being answered in precise terms]
 **Scope**: [What's in] | [What's explicitly out]
-**Methodology**: [Model selected] because [rationale] | Sources: [prioritization]
+**Methodology**: [Model selected] because [rationale]
+**Search mode**: [web/academic/sec] because [rationale]
 **Expected Output**: [Brief answer / Detailed report / Comparative analysis / etc.]
+
+### Parameters
+- search_mode: [web/academic/sec]
+- return_images: [true/false]
+- Date filters: [suggest if applicable, e.g., "search_after_date_filter: 01/01/2025"]
+- Domain filters: [suggest if applicable, e.g., "search_domain_filter: ['docs.python.org']"]
 
 ### Alternatives to Consider
 - [Alternative framing 1] — might be better if [condition]
@@ -114,6 +134,8 @@ Proceed?
 
 **CRITICAL**: Always save response to file BEFORE processing. This prevents data loss from Bash output truncation (30k char limit). Deep research responses routinely exceed this.
 
+**For async deep research**: Use the async endpoint when deep research may timeout. See `references/api-reference.md` for the async request format (requires `{"request": {...}}` wrapper) and polling instructions.
+
 **API Key Location**: `~/.claude/skills/perplexity-intelligent/config/api-key.env`
 
 **Step 4a: Prepare directories and filename**
@@ -128,32 +150,37 @@ OUTPUT_FILE="$RESEARCH_DIR/raw/${TIMESTAMP}_${TOPIC_SLUG}.json"
 
 **Step 4b: Execute and save atomically**
 
-Read the key from `~/.claude/skills/perplexity-intelligent/config/api-key.env`, then:
+Extract the API key and run curl in a single Bash command. The key must stay within the shell process — do NOT read it with the Read tool and embed it in a separate Bash call (string mangling at the tool boundary causes 401s).
 
 ```bash
-curl -s https://api.perplexity.ai/chat/completions \
-  -H "Authorization: Bearer API_KEY_VALUE" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "MODEL_NAME",
-    "messages": [
-      {"role": "system", "content": "SYSTEM_PROMPT"},
-      {"role": "user", "content": "USER_QUERY"}
-    ]
-  }' | jq '.' > "$OUTPUT_FILE"
+PPLX_KEY=$(grep '^PERPLEXITY_API_KEY' ~/.claude/skills/perplexity-intelligent/config/api-key.env | cut -d'"' -f2) && curl -s "https://api.perplexity.ai/chat/completions" -H "Authorization: Bearer ${PPLX_KEY}" -H "Content-Type: application/json" -d '{"model":"MODEL_NAME","messages":[{"role":"system","content":"SYSTEM_PROMPT"},{"role":"user","content":"USER_QUERY"}],"web_search_options":{"search_context_size":"high"},"search_mode":"SEARCH_MODE","return_related_questions":true,"return_images":RETURN_IMAGES,"temperature":0.2,"stream":false}' | jq '.' > "$OUTPUT_FILE" && echo "Saved: $OUTPUT_FILE" && echo "Size: $(wc -c < "$OUTPUT_FILE") bytes | Lines: $(wc -l < "$OUTPUT_FILE")"
+```
 
-echo "Saved: $OUTPUT_FILE"
-echo "Size: $(wc -c < "$OUTPUT_FILE") bytes | Lines: $(wc -l < "$OUTPUT_FILE")"
+**For deep research, add:**
+```json
+"reasoning_effort": "high"
+```
+
+**With date filters (when approved in research plan):**
+```json
+"search_after_date_filter": "01/01/2025",
+"search_before_date_filter": "02/16/2026"
+```
+
+**With domain filters (when approved in research plan):**
+```json
+"search_domain_filter": ["docs.python.org", "github.com"]
 ```
 
 **Why `jq '.'`**: Pretty-prints JSON to multiple short lines. The Read tool truncates lines >2000 chars — minified JSON would be truncated. Pretty-printed JSON is safe.
 
 **Claude Code Bash Compatibility**:
-- `source file.env` does NOT work - runs in non-interactive subshell
-- Command substitution `$(...)` gets escaped incorrectly
-- **Solution**: Use Read tool for key, embed directly in curl command
+- `source file.env` does NOT work — runs in non-interactive subshell
+- Do NOT use the Read tool to get the key and then embed it in a separate Bash call — string mangling at the Claude→Bash boundary causes 401s
+- **Solution**: Extract the key with `grep | cut` in the same Bash command as curl, keeping it in a shell variable (`${PPLX_KEY}`) that never leaves the process
+- The `$(grep ... | cut ...)` substitution works because it executes within the shell, not across the tool boundary
 
-See `references/api-reference.md` for all parameters (search modes, domain filters, recency, etc.).
+See `references/api-reference.md` for all parameters.
 
 ### 4.5. Retrieve Response from File
 
@@ -177,14 +204,17 @@ Read: $OUTPUT_FILE, offset=500, limit=500
 From the file contents retrieved in Step 4.5, extract and present:
 
 - Main response content (`.choices[0].message.content`)
-- All citations with URLs (`.citations[]`)
+- All sources with metadata (`.search_results[]` — title, URL, date, snippet)
 - Model used and rationale
-- Token usage and cost (`.usage` field)
+- Token usage and cost (`.usage` and `.usage.cost`)
 - Related questions (if `return_related_questions: true` was used)
 
-Always include citations. Never omit sources.
+**Cost extraction:**
+```bash
+jq '.usage.cost' "$OUTPUT_FILE"
+```
 
-**Tip**: Use `return_related_questions: true` when exploring a new topic to discover adjacent questions worth investigating.
+Always include sources. Never omit citations.
 
 **Raw file reference**: Note the saved file path — you'll reference it in the thread file.
 
@@ -204,7 +234,7 @@ Research thread for [brief description of research objective].
 ## Query 1: [Brief query description]
 **Timestamp**: 2025-12-26T14:30:22Z (America/Phoenix 07:30:22)
 **Raw**: [raw/20251226_143022_topicname.json](raw/20251226_143022_topicname.json)
-**Model**: sonar-reasoning-pro | **Tokens**: 2,847
+**Model**: sonar-reasoning-pro | **Tokens**: 2,847 | **Cost**: $0.019
 
 ### Approved Plan
 [Copy of the research plan that was approved before execution]
@@ -212,18 +242,18 @@ Research thread for [brief description of research objective].
 ### Findings
 [Synthesized findings - key points, not full dump]
 
-### Citations
+### Sources
 [1] Title - domain.com
-    https://full-url...
+    URL | Published: YYYY-MM-DD | Updated: YYYY-MM-DD
 [2] Title - domain.com
-    https://full-url...
+    URL | Published: YYYY-MM-DD | Updated: YYYY-MM-DD
 
 ---
 
 ## Query 2: [Follow-up query description]
 **Timestamp**: 2025-12-26T15:45:10Z (America/Phoenix 08:45:10)
 **Raw**: [raw/20251226_154510_topicname.json](raw/20251226_154510_topicname.json)
-**Model**: sonar-deep-research | **Tokens**: 11,428
+**Model**: sonar-deep-research | **Tokens**: 11,428 | **Cost**: $0.816
 
 ### Approved Plan
 [...]
@@ -231,7 +261,7 @@ Research thread for [brief description of research objective].
 ### Findings
 [...]
 
-### Citations
+### Sources
 [...]
 
 ---
@@ -259,18 +289,15 @@ Research thread for [brief description of research objective].
 
 ## Multi-Model Synthesis
 
-For queries requiring maximum comprehensiveness and objectivity, use multiple models sequentially:
+For queries requiring maximum comprehensiveness, use both models sequentially:
 
-**Pattern: TruthTracer-style Analysis**
-
-1. **sonar-pro**: Factual grounding - gather verified information
-2. **sonar-reasoning-pro**: Logical analysis - identify causal relationships
-3. **sonar-deep-research**: Exhaustive investigation (for important topics)
+1. **sonar-deep-research**: Exhaustive investigation — gather comprehensive data
+2. **sonar-reasoning-pro**: Analytical synthesis — evaluate findings, identify patterns, draw conclusions
 
 Then synthesize:
-- Note where models **agree** (high confidence)
-- Surface where models **conflict** (flag for user)
-- Combine citations from all sources
+- Note where both models **agree** (high confidence)
+- Surface where they **conflict** (flag for user)
+- Combine sources from both
 - Present unified findings with transparency about confidence levels
 
 See `references/multi-model.md` for detailed synthesis patterns.
@@ -286,7 +313,7 @@ See `references/multi-model.md` for detailed synthesis patterns.
 
 **Multi-query threads**: A research effort often requires multiple queries. Each query gets its own section in the thread file, with a running synthesis section at the bottom that gets updated after each query.
 
-**For technical debugging**: Preserve the investigation path - hypotheses generated, each validated/invalidated, what was ruled out and why. Future sessions benefit from seeing the reasoning chain, not just conclusions.
+**For technical debugging**: Preserve the investigation path — hypotheses generated, each validated/invalidated, what was ruled out and why. Future sessions benefit from seeing the reasoning chain, not just conclusions.
 
 ## Output Requirements
 
@@ -294,16 +321,16 @@ Every response must include:
 
 1. **Model Rationale**: Explain which model(s) used and why
 2. **Response Content**: The actual findings
-3. **Citations**: All sources with URLs, grouped by relevance
+3. **Sources**: All sources with URLs, titles, dates
 4. **Confidence Indicators**: Note certainty levels, conflicts between sources
-5. **Cost Summary**: Tokens used, estimated cost (optional but useful)
+5. **Cost Summary**: Tokens used, actual cost from `usage.cost.total_cost`
 
-**Citation Format**:
+**Source Format**:
 ```
 [1] Title - domain.com
-    https://full-url...
+    URL | Published: YYYY-MM-DD | Updated: YYYY-MM-DD
 [2] Title - domain.com
-    https://full-url...
+    URL | Published: YYYY-MM-DD | Updated: YYYY-MM-DD
 ```
 
 ## System Prompts
@@ -340,6 +367,7 @@ What would you like to do?
 
 ## References
 
-- `references/models.md` - Detailed model capabilities and selection guidance
-- `references/api-reference.md` - Complete API parameter reference
-- `references/multi-model.md` - Multi-model synthesis patterns
+- `references/models.md` — Model capabilities, pricing, and selection guidance
+- `references/api-reference.md` — Complete API parameter reference
+- `references/multi-model.md` — Multi-model research patterns
+- `references/rca-workflow.md` — Root cause analysis workflow
