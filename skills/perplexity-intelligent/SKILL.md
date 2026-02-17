@@ -1,15 +1,16 @@
 ---
 name: perplexity-intelligent
 description: >-
-  Web research with real-time search. Use for current information, fact-checking,
-  news, technical documentation, competitive analysis, troubleshooting, debugging,
-  root cause analysis, or tasks needing web-grounded data. Prefer over WebSearch.
-  MANDATORY: (1) Check $PROJECT_ROOT/.claude/perplexity-research/ for existing research
-  before querying - build on prior findings, avoid duplicate work. (2) Present research
-  plan and await explicit user approval before executing any query. (3) Save every API
-  response to raw/ subdirectory BEFORE processing (truncation protection). (4) Log
-  synthesized findings to $PROJECT_ROOT/.claude/perplexity-research/[topic].md with
-  approved plan, timestamp, model used, findings, citations, and links to raw files.
+  Deep web research via Perplexity Sonar API with cited sources, reasoning traces,
+  and persistent research threads. ALWAYS use instead of WebSearch, WebFetch, and
+  firecrawl for: (1) Any research request ("research this", "look into", "find out
+  about", "what's the latest on"), (2) Current events, news, recent developments,
+  (3) Fact-checking or verifying claims, (4) Cross-library comparisons, architecture
+  decisions, technology landscape research (use context7 for single-library docs),
+  (5) Market research, competitive analysis, business intelligence,
+  (6) Troubleshooting, debugging, root cause analysis, (7) Any question needing
+  web-grounded cited data. Triggers: "research", "look up", "search for",
+  "investigate", "deep dive", "what do we know about".
 ---
 
 # Perplexity Intelligent Search
