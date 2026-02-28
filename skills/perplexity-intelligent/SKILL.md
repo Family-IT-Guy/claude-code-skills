@@ -33,7 +33,10 @@ $PROJECT_ROOT/.claude/perplexity-research/
 ├── raw/                          # Complete API responses (machine-readable, never truncated)
 │   ├── 20251226_143022_topicname.json
 │   └── 20251226_151033_othertopic.json
-├── topic-name.md                 # Human-readable thread (references raw files)
+├── sources/                      # Full article content from primary source reading
+│   ├── 20251226_sparktoro-com_prompt-diversity.md
+│   └── 20251226_arxiv-org_2401-12345.md
+├── topic-name.md                 # Human-readable thread (references raw + source files)
 └── other-topic.md
 ```
 
@@ -219,6 +222,29 @@ Always include sources. Never omit citations.
 
 **Raw file reference**: Note the saved file path — you'll reference it in the thread file.
 
+### 5.5. Read Primary Sources
+
+Dispatch one subagent (Task tool) per source URL from Perplexity's search results. All run in parallel. No cap on subagent count.
+
+**Each subagent receives:**
+- Project context (what the project is, who it's for, what matters)
+- The approved research plan from Step 3.5 (scope, methodology, in/out)
+- Perplexity's findings so far (so the subagent knows what's established)
+- The Perplexity snippet for this specific source (so the subagent knows what was already extracted)
+- Specific claims being verified (when applicable)
+- The research question
+
+**Each subagent:**
+1. Fetch the article: Chawan skill first, Playwright skill if Chawan fails, Firecrawl skill if Playwright fails
+2. Save full article content to `perplexity-research/sources/[timestamp]_[slug].md` (slug from URL domain + path)
+3. Return freeform findings: relevant evidence, contradictions to Perplexity's findings, notable findings outside research scope, source quality assessment, key quotes, and **leads** (URLs or references cited in the article worth following)
+
+**Wave pattern:** After all subagents return, collect and deduplicate leads across all returns. If meaningful leads exist, dispatch another wave of subagents with the same pattern and context. Repeat until the research question is sufficiently answered or no new leads remain.
+
+### 5.6. Synthesize Source Findings
+
+Integrate all subagent returns across all waves with Perplexity's original findings. Identify evidence Perplexity missed or understated. Resolve contradictions. Assess confidence based on source quality. Update findings before writing to thread.
+
 ### 6. Write to Thread (Required)
 
 After presenting results, update `$PROJECT_ROOT/.claude/perplexity-research/[topic].md`. Create file if new topic; append if continuing research.
@@ -246,8 +272,19 @@ Research thread for [brief description of research objective].
 ### Sources
 [1] Title - domain.com
     URL | Published: YYYY-MM-DD | Updated: YYYY-MM-DD
+    Source file: [sources/20251226_domain-com_slug.md](sources/20251226_domain-com_slug.md)
 [2] Title - domain.com
     URL | Published: YYYY-MM-DD | Updated: YYYY-MM-DD
+    Source file: [sources/20251226_domain-com_slug.md](sources/20251226_domain-com_slug.md)
+
+### Primary Source Findings
+[Evidence from subagent source reading that Perplexity missed or understated]
+[Contradictions or complications discovered]
+[Notable findings outside original research scope]
+
+### Leads Followed
+- Wave 2: [N] sources followed from Wave 1 leads
+- Wave 3: [N] sources followed from Wave 2 leads (if applicable)
 
 ---
 
